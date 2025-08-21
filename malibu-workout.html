@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Programme 5/7 – Malibu Workout Timer</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background: #f5f5f5; color: #222; }
+    h1 { font-size: 1.5rem; margin-bottom: 10px; }
+    select, button { padding: 8px 12px; margin: 4px; border-radius: 6px; border: 1px solid #ccc; }
+    .timer { background: #fff; padding: 20px; border-radius: 12px; margin-top: 15px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
+    .label { font-weight: bold; margin-bottom: 8px; }
+    .time { font-size: 2rem; margin: 10px 0; }
+    .progress { width: 100%; height: 15px; background: #eee; border-radius: 8px; overflow: hidden; margin-bottom: 10px; }
+    .progress-bar { height: 100%; background: #4caf50; width: 0%; transition: width 0.5s; }
+    .controls button { margin-right: 8px; }
+    details { margin-top: 15px; background: #fff; padding: 10px; border-radius: 8px; }
+  </style>
+</head>
+<body>
+  <h1>Programme 5/7 – Malibu Workout Timer</h1>
+  <label>Jour :
+    <select id="daySelect"></select>
+  </label>
+  <button id="muteBtn">🔊 Son activé</button>
+
+  <div class="timer">
+    <div class="label" id="segmentLabel">Sélectionnez un jour</div>
+    <div class="time" id="time">00:00</div>
+    <div class="progress"><div class="progress-bar" id="progressBar"></div></div>
+    <div id="info">Écoulé: 00:00 | Restant: 00:00 | Cible: 01:15:00</div>
+    <div class="controls">
+      <button id="startBtn">▶️ Démarrer</button>
+      <button id="pauseBtn">⏸️ Pause</button>
+      <button id="resetBtn">🔄 Réinitialiser</button>
+      <button id="skipBtn">⏭️ Suivant</button>
+    </div>
+  </div>
+
+  <details>
+    <summary>Voir le plan détaillé du jour</summary>
+    <div id="planDetails"></div>
+  </details>
+
+<script>
+// -----------------------------
+// Définition du plan (simplifié)
+// -----------------------------
+const min = (m) => m * 60;
+const s = (x) => x;
+const SESSION_TARGET = min(75);
+const COOLDOWN_MIN = min(10);
+
+const PLAN = {
+  Lundi: [
+    { label: "Échauffement – course fractionné", effort: min(15) },
+    { label: "Pompes claquées", effort: 40, rest: 45, reps: 3 },
+    { label: "Burpees", effort: 40, rest: 60, reps: 3 },
+    { label: "Pompes larges", effort: 40, rest: 45, reps: 3 },
+    { label: "Pompes biceps", effort: 30, rest: 45, reps: 3 },
+    { label: "Mountain climbers", effort: 30, rest: 30, reps: 3 },
+    { label: "Squats sautés", effort: 35, rest: 45, reps: 3 },
+    { label: "Finisher – max pompes", effort: min(5) }
+  ],
+  Mardi: [
+    { label: "Échauffement – course légère", effort: min(8) },
+    { label: "Squats sautés", effort: 40, rest: 60, reps: 4 },
+    { label: "Fentes avant", effort: 35, rest: 45, reps: 4 },
+    { label: "Fentes sautées", effort: 30, rest: 40, reps: 3 },
+    { label: "Gainage planche", effort: min(1), rest: 30, reps: 4 },
+    { label: "Crunchs", effort: 30, rest: 30, reps: 4 },
+  ],
+  Mercredi: [
+    { label: "Course sur sable", effort: min(12) },
+    { label: "Pompes classiques", effort: 40, rest: 45, reps: 3 },
+    { label: "Pompes diamant", effort: 30, rest: 45, reps: 3 },
+    { label: "Pompes déclinées", effort: 30, rest: 45, reps: 3 },
+    { label: "Pompes inversées", effort: 30, rest: 40, reps: 3 },
+    { label: "Levée de pneu", effort: 40, rest: 60, reps: 3 },
+    { label: "Sauts dans pneu", effort: 25, rest: 40, reps: 3 },
+    { label: "Finisher – max pompes", effort: 180 },
+  ],
+  Vendredi: [
+    { label: "Course modérée", effort: min(10) },
+    { label: "Pompes larges", effort: 40, rest: 45, reps: 3 },
+    { label: "Pompes pike", effort: 30, rest: 45, reps: 3 },
+    { label: "Pompes pseudo-planche", effort: 25, rest: 50, reps: 3 },
+    { label: "Pompes archer", effort: 30, rest: 45, reps: 3 },
+    { label: "Gainage latéral", effort: 30, rest: 20, reps: 6 },
+  ],
+  Samedi: [
+    { label: "Course fractionné sable (10×)", effort: 30, rest: 30, reps: 10 },
+    { label: "Fentes marchées", effort: 35, rest: 45, reps: 3 },
+    { label: "Squats tempo", effort: 40, rest: 50, reps: 3 },
+    { label: "Squat isométrique bas", effort: 40, rest: 30, reps: 3 },
+    { label: "Step-up pneu", effort: 30, rest: 40, reps: 3 },
+    { label: "Sauts latéraux pneu", effort: 35, rest: 45, reps: 3 },
+    { label: "Poussée de pneu", effort: 40, rest: 60, reps: 3 },
+    { label: "Mountain climbers", effort: 30, rest: 30, reps: 4 },
+  ],
+};
+
+// -----------------------------
+// Construire segments + cooldown
+// -----------------------------
+function buildSegments(day) {
+  const exos = PLAN[day] || [];
+  let segs = [];
+  exos.forEach(ex => {
+    if (ex.reps) {
+      for (let i = 1; i <= ex.reps; i++) {
+        segs.push({ label: \`\${ex.label} (\${i}/\${ex.reps})\`, type: "effort", duration: ex.effort });
+        if (ex.rest) segs.push({ label: "Repos", type: "rest", duration: ex.rest });
+      }
+    } else {
+      segs.push({ label: ex.label, type: "effort", duration: ex.effort });
+    }
+  });
+  let total = segs.reduce((a, v) => a + v.duration, 0);
+  const cooldown = Math.max(COOLDOWN_MIN, SESSION_TARGET - total);
+  segs.push({ label: "Étirements & respiration", type: "effort", duration: cooldown });
+  return segs;
+}
+
+// -----------------------------
+// Timer & UI
+// -----------------------------
+let currentSegments = [];
+let idx = 0, remaining = 0, running = false, interval = null, elapsed = 0;
+let muted = false;
+
+const daySelect = document.getElementById("daySelect");
+const days = Object.keys(PLAN);
+days.forEach(d => {
+  const opt = document.createElement("option");
+  opt.value = d;
+  opt.textContent = d;
+  daySelect.appendChild(opt);
+});
+daySelect.value = days[0];
+
+const labelEl = document.getElementById("segmentLabel");
+const timeEl = document.getElementById("time");
+const progressBar = document.getElementById("progressBar");
+const infoEl = document.getElementById("info");
+const planDetails = document.getElementById("planDetails");
+
+function formatTime(sec) {
+  const m = Math.floor(sec/60);
+  const s = sec % 60;
+  return \`\${String(m).padStart(2,"0")}:\${String(s).padStart(2,"0")}\`;
+}
+
+function beep(){
+  if(muted) return;
+  const ctx = new (window.AudioContext||window.webkitAudioContext)();
+  const o = ctx.createOscillator();
+  const g = ctx.createGain();
+  o.connect(g); g.connect(ctx.destination);
+  o.frequency.value = 880; o.start();
+  g.gain.setValueAtTime(0.1, ctx.currentTime);
+  o.stop(ctx.currentTime+0.2);
+}
+
+function loadDay(day){
+  currentSegments = buildSegments(day);
+  idx = 0;
+  elapsed = 0;
+  remaining = currentSegments[0].duration;
+  render();
+  planDetails.innerHTML = currentSegments.map(s => \`<div>\${s.label} – \${formatTime(s.duration)}</div>\`).join("");
+  // mémoriser dernier jour
+  try { localStorage.setItem("mw_day", day); } catch(e) {}
+}
+
+function tick(){
+  if(!running) return;
+  remaining--;
+  elapsed++;
+  if(remaining<=0){
+    idx++;
+    if(idx < currentSegments.length){
+      remaining = currentSegments[idx].duration;
+      beep();
+    } else {
+      running=false;
+    }
+  }
+  render();
+}
+
+function render(){
+  const seg = currentSegments[idx] || {};
+  labelEl.textContent = seg.label || "Séance terminée 🎉";
+  timeEl.textContent = formatTime(remaining||0);
+  const total = currentSegments.reduce((a,v)=>a+v.duration,0);
+  const prog = Math.min(100, Math.floor((elapsed/total)*100));
+  progressBar.style.width = prog+"%";
+  infoEl.textContent = \`Écoulé: \${formatTime(elapsed)} | Restant: \${formatTime(Math.max(0,total-elapsed))} | Cible: 01:15:00\`;
+}
+
+// Controls
+document.getElementById("startBtn").onclick=()=>{ if(!running){ running=true; clearInterval(interval); interval=setInterval(tick,1000);} };
+document.getElementById("pauseBtn").onclick=()=>{ running=false; };
+document.getElementById("resetBtn").onclick=()=>{ loadDay(daySelect.value); running=false; };
+document.getElementById("skipBtn").onclick=()=>{ idx++; if(idx<currentSegments.length){ remaining=currentSegments[idx].duration; } else running=false; render(); };
+
+daySelect.onchange=()=>loadDay(daySelect.value);
+
+// Restaurer jour mémorisé
+try {
+  const saved = localStorage.getItem("mw_day");
+  if(saved && Object.keys(PLAN).includes(saved)) {
+    daySelect.value = saved;
+  }
+} catch(e) {}
+
+const muteBtn=document.getElementById("muteBtn");
+muteBtn.onclick=()=>{
+  muted=!muted;
+  muteBtn.textContent = muted?"🔇 Son coupé":"🔊 Son activé";
+  try { localStorage.setItem("mw_mute", muted? "1":"0"); } catch(e) {}
+};
+
+// Restaurer mute mémorisé
+try {
+  const m = localStorage.getItem("mw_mute");
+  if(m === "1"){ muted=true; muteBtn.textContent="🔇 Son coupé"; }
+} catch(e) {}
+
+loadDay(daySelect.value);
+</script>
+</body>
+</html>
